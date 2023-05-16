@@ -14,7 +14,7 @@ from keras import Sequential
 from keras.optimizers import Adam
 from keras.callbacks import Callback
 from keras.layers import LSTM, Dropout, RepeatVector
-from helpers import min_max_normalize, denormalization, candlestick3D
+from stock_prediction.utils.helpers import min_max_normalize, denormalization, candlestick3D
 
 
 class ResetStatesCallback(Callback):
@@ -46,7 +46,7 @@ class VietnamStocks:
         """
         # Get companies given criteria
         tickers = pd.read_csv(f'{self.path}ticker-overview.csv')
-        ticker = tickers.loc[(tickers['exchange'] == self.market) & np.array([tickers['industryEn'] == i for i in self.sectors]).any()]["ticker"]
+        ticker = tickers.loc[(tickers['exchange'] == self.markets) & np.array([tickers['industryEn'] == i for i in self.sectors]).any()]["ticker"]
         
         # Check if we have that dataset
         stks_loc = f'{self.path}stock-historical-data/'
