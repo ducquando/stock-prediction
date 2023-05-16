@@ -37,8 +37,9 @@ class VietnamStocks:
         self.dataset = "UpcomIndex" if market == "UPCOM" else "UNXIndex"
         self.stock, self.companies = self.get_stock()
         self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
+        self.X, self.y = self.get_Xy_training()
         self.model = pre_trained
-        
+    
     
     def get_stock(self):
         """
@@ -112,7 +113,7 @@ class VietnamStocks:
         return X, y
     
     
-    def get_X_prediction(self):
+    def get_X_forecast(self):
         """
         Get data features and data labels for making predictions
         """
@@ -166,8 +167,7 @@ class VietnamStocks:
         Train the model
         """
         # Get training data
-        X, y = self.get_Xy_training()
-        X_train, X_val, X_test, y_train, y_val, y_test = self.train_val_test_split(X, y)
+        X_train, X_val, _, y_train, y_val, _ = self.train_val_test_split(self.X, self.y)
         
         # Normalize data
         X_train_norm, y_train_norm = min_max_normalize(X_train, y_train)
@@ -213,7 +213,7 @@ class VietnamStocks:
         return self.companies
     
 
-    def plot_model_loss(self, performance):
+    def plot_model_loss(self, performance, path = ""):
         """
         Save model loss
         """
@@ -225,12 +225,15 @@ class VietnamStocks:
         plt.legend(['Training', 'Validation'], loc = 'upper right')
         
         # Save figure
-        plt.savefig("outputs/model_loss.jpg")
+        plt.savefig(f"{path}outputs/model_loss.jpg")
       
     
-    def test(self, company):
+    def test(self, company, path = ""):
         # Get company id
         company_id = self.companies.index(company)
+        
+        # Get training data
+        _, _, X_test, _, _, y_test = self.train_val_test_split(self.X, self.y)
         
         # MinMax normalize the test data
         X_test_norm, y_test_norm = min_max_normalize(X_test, y_test)
@@ -248,16 +251,16 @@ class VietnamStocks:
         fig, ax = plt.subplots(figsize = (10, 5))
         candlestick3D(ax, y_pred, company = company_id, colordown = 'blue', full = False)
         candlestick3D(ax, y_test, company = company_id, colordown = 'red', full = False)
-        ax.set_title("Stock trend")
+        ax.set_title(f"{company}: Stock trend")
         plt.xlabel('Time (days)'); plt.ylabel('Price in $')
         
         # Save figure
-        plt.savefig(f"outputs/test_{company}.jpg")
+        plt.savefig(f"{path}outputs/test_{company}.jpg")
         
         return average_mse
         
         
-    def forecast(self, company):
+    def forecast(self, company, path = ""):
         """
         Predict on the future
         """
@@ -265,7 +268,7 @@ class VietnamStocks:
         company_id = self.companies.index(company)
         
         # Get prediction data
-        X_forecast = self.get_X_prediction()
+        X_forecast = self.get_X_forecast()
         
         # MinMax normalize the data
         X_forecast_norm, _ = min_max_normalize(X_forecast, np.zeros((2,self.train_period,12)))
@@ -279,8 +282,8 @@ class VietnamStocks:
         # Plot the subset splits
         fig, ax = plt.subplots(figsize = (10, 5))
         candlestick3D(ax, y_forecast_pred, company = company_id, colordown = 'blue', full = False)
-        ax.set_title("Stock trend")
+        ax.set_title(f"{company}: Stock trend")
         plt.xlabel('Time (days)'); plt.ylabel('Price in $')
         
         # Save figure
-        plt.savefig(f"outputs/forecast_{company}.jpg")
+        plt.savefig(f"{path}outputs/forecast_{company}.jpg")
