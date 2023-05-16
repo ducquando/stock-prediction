@@ -37,7 +37,7 @@ class VietnamStocks:
         self.dataset = "UpcomIndex" if market == "UPCOM" else "UNXIndex"
         self.stock, self.companies = self.get_stock()
         self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
-        self.model = self.train_model()
+        self.model = None self.train_model()
         
     
     def get_stock(self):
@@ -50,22 +50,20 @@ class VietnamStocks:
         
         # Check if we have that dataset
         stks_loc = f'{self.path}stock-historical-data/'
-        stks, valid = glob.glob(stk_loc + '*.csv'), []
-        for stk in stks:
+        stks, valid, data_frames = glob.glob(stks_loc + '*.csv'), [], []
+        for stk in ticker:
             name = f'{stks_loc}{str(stk)}-{self.dataset}-History.csv'
-            if name in all_stocks:
-                valid.append(ticker)
+            if name in stks:
+                valid.append(stk)
                 
         # Compile the list of stock datas that meet requirements
-        data_frames, companies = [], []
         for i in range(len(valid)):
-            data = pd.read_csv(f'{stks_loc}{str(stk)}-{self.dataset}-History.csv')
+            data = pd.read_csv(f'{stks_loc}{str(valid[i])}-{self.dataset}-History.csv')
             indexing = data.loc[data['TradingDate'] == self.date]
             if len(indexing) == 1:
                 data = data.iloc[indexing.index[0]:,:]
                 data = data[['TradingDate', 'Low', 'Open', 'Volume', 'High', 'Close', 'Close']]
                 data_frames.append(data)
-                companies.append(stk)
                 
         # Merge into one
         stock = reduce(lambda left, right: pd.merge(left, right, on = ['TradingDate'], how = 'outer'), data_frames)
@@ -76,7 +74,7 @@ class VietnamStocks:
         stock = stock.dropna()
         stock = stock.reset_index(drop = True)
         
-        return stock, companies
+        return stock, valid
     
     
     def get_Xy_training(self):
@@ -179,7 +177,7 @@ class VietnamStocks:
         autoencoder = Sequential([
             # Encoder
             ## Many to many
-            LSTM(50, return_sequences = True, stateful = True, batch_input_shape = (2, 30, dim_feature)),   
+            LSTM(50, return_sequences = True, stateful = True, batch_input_shape = (2, self.train_period, self.dim_feature)),
             Dropout(0.5),
             ## Many to many
             LSTM(50, return_sequences = True, stateful = True),    
@@ -189,19 +187,20 @@ class VietnamStocks:
             
             # Decoder
             ## One to many
-            RepeatVector(7),
+            RepeatVector(self.predict_period),
             ## Many to many
             LSTM(50, return_sequences = True, stateful = True),    
             Dropout(0.5),
             ## Classifiers
-            LSTM(dim_label, return_sequences = True, stateful = True)      
+            LSTM(self.dim_label, return_sequences = True, stateful = True)
         ], name = "LSTM_many_to_many")
         
         # Compile and train the model with Mean Squared Error loss function
         autoencoder.compile(optimizer = Adam(learning_rate = 1e-5), loss = 'mse', metrics = ['mse'])
         lstm_performance = autoencoder.fit(X_train_norm, y_train_norm, validation_data = (X_val_norm, y_val_norm), shuffle = False, epochs = 15, batch_size = 2, callbacks = [ResetStatesCallback()])
+        self.model = autoencoder
         
-        return autoencoder, lstm_performance
+        return lstm_performance
     
     
     ## Call functions ##
@@ -237,7 +236,7 @@ class VietnamStocks:
         X_test_norm, y_test_norm = min_max_normalize(X_test, y_test)
         
         # Get prediction on the test data
-        y_pred_norm = autoencoder.predict(X_test_norm, batch_size = 2)
+        y_pred_norm = self.model.predict(X_test_norm, batch_size = 2)
         
         # Calculate the average MSE
         average_mse = mean_squared_error(y_pred_norm.flatten(), y_test_norm.flatten())
@@ -269,7 +268,7 @@ class VietnamStocks:
         X_forecast = self.get_X_prediction()
         
         # MinMax normalize the data
-        X_forecast_norm, _ = min_max_normalize(X_forecast, np.zeros((2,7,12)))
+        X_forecast_norm, _ = min_max_normalize(X_forecast, np.zeros((2,self.train_period,12)))
 
         # Get prediction on 7 days into the future
         y_forecast_norm = autoencoder.predict(X_forecast_norm, batch_size = 2)
