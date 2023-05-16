@@ -14,7 +14,7 @@ from keras import Sequential
 from keras.optimizers import Adam
 from keras.callbacks import Callback
 from keras.layers import LSTM, Dropout, RepeatVector
-from stock_prediction.utils.helpers import min_max_normalize, denormalization, candlestick3D
+from stocks.utils.helpers import min_max_normalize, denormalization, candlestick3D
 
 
 class ResetStatesCallback(Callback):
