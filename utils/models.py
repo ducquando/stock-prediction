@@ -27,57 +27,8 @@ class ResetStatesCallback(Callback):
             self.model.reset_states()
         self.counter += 1
 
-        
-class VietnamStocks:
-    def __init__(self, market, sectors, date = "2007-01-11", train = 30, test = 7, path = "", pre_trained = None):
-        self.path = path + 'dataset/vn/'
-        self.date, self.sectors = date, sectors
-        self.train_period, self.predict_period = train, test # days
-        self.markets = market if market == "UPCOM" else "UNX"
-        self.dataset = "UpcomIndex" if market == "UPCOM" else "UNXIndex"
-        self.stock, self.companies = self.get_stock()
-        self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
-        self.X, self.y = self.get_Xy_training()
-        self.model = pre_trained
-    
-    
-    def get_stock(self):
-        """
-        Get a dataframe contains the stocks of all companies in the given time period that matches the criteria
-        """
-        # Get companies given criteria
-        tickers = pd.read_csv(f'{self.path}ticker-overview.csv')
-        ticker = tickers.loc[(tickers['exchange'] == self.markets) & np.array([tickers['industryEn'] == i for i in self.sectors]).any()]["ticker"]
-        
-        # Check if we have that dataset
-        stks_loc = f'{self.path}stock-historical-data/'
-        stks, valid, data_frames = glob.glob(stks_loc + '*.csv'), [], []
-        for stk in ticker:
-            name = f'{stks_loc}{str(stk)}-{self.dataset}-History.csv'
-            if name in stks:
-                valid.append(stk)
-                
-        # Compile the list of stock datas that meet requirements
-        for i in range(len(valid)):
-            data = pd.read_csv(f'{stks_loc}{str(valid[i])}-{self.dataset}-History.csv')
-            indexing = data.loc[data['TradingDate'] == self.date]
-            if len(indexing) == 1:
-                data = data.iloc[indexing.index[0]:,:]
-                data = data[['TradingDate', 'Low', 'Open', 'Volume', 'High', 'Close', 'Close']]
-                data_frames.append(data)
-                
-        # Merge into one
-        stock = reduce(lambda left, right: pd.merge(left, right, on = ['TradingDate'], how = 'outer'), data_frames)
-        cols = [[f"Low_{i}", f"Open_{i}", f"Volume_{i}", f"High_{i}", f"Close_{i}", f"Adjusted Close_{i}"] for i in range(1, int(stock.shape[1] / 6) + 1)]
-        stock.columns = np.append(np.array("Date"), np.array(cols).flatten())
-        
-        # Drop nan values
-        stock = stock.dropna()
-        stock = stock.reset_index(drop = True)
-        
-        return stock, valid
-    
-    
+
+class Stocks:
     def get_Xy_training(self):
         """
         Get data features and data labels for training
@@ -180,16 +131,16 @@ class VietnamStocks:
             LSTM(50, return_sequences = True, stateful = True, batch_input_shape = (2, self.train_period, self.dim_feature)),
             Dropout(0.5),
             ## Many to many
-            LSTM(50, return_sequences = True, stateful = True),    
+            LSTM(50, return_sequences = True, stateful = True),
             Dropout(0.5),
             ## Many to one
-            LSTM(50, stateful = True),                            
+            LSTM(50, stateful = True),
             
             # Decoder
             ## One to many
             RepeatVector(self.predict_period),
             ## Many to many
-            LSTM(50, return_sequences = True, stateful = True),    
+            LSTM(50, return_sequences = True, stateful = True),
             Dropout(0.5),
             ## Classifiers
             LSTM(self.dim_label, return_sequences = True, stateful = True)
@@ -287,3 +238,100 @@ class VietnamStocks:
         
         # Save figure
         plt.savefig(f"{path}outputs/forecast_{company}.jpg")
+
+
+class VietnamStocks(Stocks):
+    def __init__(self, market, sectors, date = "2007-01-11", train = 30, test = 7, path = "", pre_trained = None):
+        self.path = path + 'dataset/vn/'
+        self.date, self.sectors = date, sectors
+        self.train_period, self.predict_period = train, test # days
+        self.markets = market if market == "UPCOM" else "UNX"
+        self.dataset = "UpcomIndex" if market == "UPCOM" else "UNXIndex"
+        self.stock, self.companies = self.get_stock()
+        self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
+        self.X, self.y = self.get_Xy_training()
+        self.model = pre_trained
+    
+    
+    def get_stock(self):
+        """
+        Get a dataframe contains the stocks of all companies in the given time period that matches the criteria
+        """
+        # Get companies given criteria
+        tickers = pd.read_csv(f'{self.path}ticker-overview.csv')
+        ticker = tickers.loc[(tickers['exchange'] == self.markets) & np.array([tickers['industryEn'] == i for i in self.sectors]).any()]["ticker"]
+        
+        # Check if we have that dataset
+        stks_loc = f'{self.path}stock-historical-data/'
+        stks, valid, data_frames = glob.glob(stks_loc + '*.csv'), [], []
+        for stk in ticker:
+            name = f'{stks_loc}{str(stk)}-{self.dataset}-History.csv'
+            if name in stks:
+                valid.append(stk)
+                
+        # Compile the list of stock datas that meet requirements
+        for i in range(len(valid)):
+            data = pd.read_csv(f'{stks_loc}{str(valid[i])}-{self.dataset}-History.csv')
+            indexing = data.loc[data['TradingDate'] == self.date]
+            if len(indexing) == 1:
+                data = data.iloc[indexing.index[0]:,:]
+                data = data[['TradingDate', 'Low', 'Open', 'Volume', 'High', 'Close', 'Close']]
+                data_frames.append(data)
+                
+        # Merge into one
+        stock = reduce(lambda left, right: pd.merge(left, right, on = ['TradingDate'], how = 'outer'), data_frames)
+        cols = [[f"Low_{i}", f"Open_{i}", f"Volume_{i}", f"High_{i}", f"Close_{i}", f"Adjusted Close_{i}"] for i in range(1, int(stock.shape[1] / 6) + 1)]
+        stock.columns = np.append(np.array("Date"), np.array(cols).flatten())
+        
+        # Drop nan values
+        stock = stock.dropna()
+        stock = stock.reset_index(drop = True)
+        
+        return stock, valid
+    
+        
+class NasdaqStocks(Stocks):
+    def __init__(self, sectors, date = "04-01-2007", train = 30, test = 7, path = "", pre_trained = None):
+        self.path = path + 'dataset/nasdaq/'
+        self.date, self.sectors = date, sectors
+        self.train_period, self.predict_period = train, test # days
+        self.stock, self.companies = self.get_stock()
+        self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
+        self.X, self.y = self.get_Xy_training()
+        self.model = pre_trained
+    
+    
+    def get_stock(self):
+        """
+        Get a dataframe contains the stocks of all companies in the given time period that matches the criteria
+        """
+        # Get companies given criteria
+        tickers = pd.read_csv(f'{self.path}nasdaq-100.csv')
+        ticker = tickers.loc[np.array([tickers['Sector'] == i for i in self.sectors]).any()]["Ticker"]
+        
+        # Check if we have that dataset
+        stks_loc = f'{self.path}stock-historical-data/'
+        stks, valid, data_frames = glob.glob(stks_loc + '*.csv'), [], []
+        for stk in ticker:
+            name = f'{stks_loc}{str(stk)}.csv'
+            if name in stks:
+                valid.append(stk)
+                
+        # Compile the list of stock datas that meet requirements
+        for i in range(len(valid)):
+            data = pd.read_csv(f'{stks_loc}{str(valid[i])}.csv')
+            indexing = data.loc[data['Date'] == self.date]
+            if len(indexing) == 1:
+                data = data.iloc[indexing.index[0]:,:]
+                data_frames.append(data)
+                
+        # Merge into one
+        stock = reduce(lambda left, right: pd.merge(left, right, on = ['TradingDate'], how = 'outer'), data_frames)
+        cols = [[f"Low_{i}", f"Open_{i}", f"Volume_{i}", f"High_{i}", f"Close_{i}", f"Adjusted Close_{i}"] for i in range(1, int(stock.shape[1] / 6) + 1)]
+        stock.columns = np.append(np.array("Date"), np.array(cols).flatten())
+        
+        # Drop nan values
+        stock = stock.dropna()
+        stock = stock.reset_index(drop = True)
+        
+        return stock, valid
