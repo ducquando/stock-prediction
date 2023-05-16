@@ -180,6 +180,9 @@ class Stocks:
       
     
     def test(self, company, path = ""):
+        """
+        Perform testing
+        """
         # Get company id
         company_id = self.companies.index(company)
         
@@ -222,7 +225,7 @@ class Stocks:
         X_forecast = self.get_X_forecast()
         
         # MinMax normalize the data
-        X_forecast_norm, _ = min_max_normalize(X_forecast, np.zeros((2,self.train_period,12)))
+        X_forecast_norm, _ = min_max_normalize(X_forecast, np.zeros((2,self.train_period,self.dim_label)))
 
         # Get prediction on 7 days into the future
         y_forecast_norm = autoencoder.predict(X_forecast_norm, batch_size = 2)
@@ -307,7 +310,7 @@ class NasdaqStocks(Stocks):
         """
         # Get companies given criteria
         tickers = pd.read_csv(f'{self.path}nasdaq-100.csv')
-        ticker = tickers.loc[np.array([tickers['Sector'] == i for i in self.sectors]).any()]["Ticker"]
+        ticker = tickers.loc[pd.Series(np.array([tickers['Sector'] == i for i in sectors]).flatten())]["Ticker"] 
         
         # Check if we have that dataset
         stks_loc = f'{self.path}stock-historical-data/'
