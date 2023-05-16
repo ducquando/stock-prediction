@@ -310,7 +310,7 @@ class NasdaqStocks(Stocks):
         """
         # Get companies given criteria
         tickers = pd.read_csv(f'{self.path}nasdaq-100.csv')
-        ticker = tickers.loc[pd.Series(np.array([tickers['Sector'] == i for i in sectors]).flatten())]["Ticker"] 
+        ticker = tickers.loc[pd.Series(np.array([tickers['Sector'] == i for i in self.sectors]).flatten())]["Ticker"] 
         
         # Check if we have that dataset
         stks_loc = f'{self.path}stock-historical-data/'
