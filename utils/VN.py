@@ -29,7 +29,7 @@ class ResetStatesCallback(Callback):
 
         
 class VietnamStocks:
-    def __init__(self, market, sectors, date = "2007-01-11", train = 30, test = 7, path = ""):
+    def __init__(self, market, sectors, date = "2007-01-11", train = 30, test = 7, path = "", pre_trained = None):
         self.path = path + 'dataset/vn/'
         self.date, self.sectors = date, sectors
         self.train_period, self.predict_period = train, test # days
@@ -37,7 +37,7 @@ class VietnamStocks:
         self.dataset = "UpcomIndex" if market == "UPCOM" else "UNXIndex"
         self.stock, self.companies = self.get_stock()
         self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
-        self.model = None self.train_model()
+        self.model = pre_trained
         
     
     def get_stock(self):
