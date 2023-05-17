@@ -116,7 +116,7 @@ class Stocks:
     ## Call functions ##
     
     
-    def train_model(self, *kwargs):
+    def train_model(self, **kwargs):
         """
         Train the model
         """
