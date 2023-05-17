@@ -282,8 +282,8 @@ class Stocks:
         """
         name = ' '.join(map(str, self.sectors))
         if self.pre_trained:
-            img = cv.imread(f"{self.path}outputs/models/{self.market}/{name}model_loss.jpg", cv2.IMREAD_COLOR)
-            img = cv.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = cv.imread(f"{self.path}outputs/models/{self.market}/{name}model_loss.jpg", cv.IMREAD_COLOR)
+            img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
             plt.imshow(img)
         else:
             # Get model performance
@@ -478,8 +478,8 @@ class Stocks:
 
 class VietnamStocks(Stocks):
     def __init__(self, market, sectors, date = "2007-01-11", train = 30, test = 7, path = "", pre_trained = False):
-        this_market = market if market == "UPCOM" else "UNX"
-        self.dataset = "UpcomIndex" if market == "UPCOM" else "UNXIndex"
+        this_market = market if market == "UPCOM" else "HNX"
+        self.dataset = "UpcomIndex" if market == "UPCOM" else "HNXIndex"
         Stocks.__init__(self, this_market, sectors, date, train, test, path, pre_trained)
     
     
@@ -538,7 +538,7 @@ class NasdaqStocks(Stocks):
         # Get companies given criteria
         path = self.path + 'dataset/nasdaq/'
         tickers = pd.read_csv(f'{path}nasdaq-100.csv')
-        ticker = tickers.loc[pd.Series(np.array([tickers['Sector'] == i for i in self.sectors]).flatten())]["Ticker"] 
+        ticker = tickers.loc[pd.Series(np.array([tickers['Sector'] == i for i in self.sectors]).all(0))]["Ticker"]
         
         # Check if we have that dataset
         stks_loc = f'{path}stock-historical-data/'
