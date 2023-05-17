@@ -30,6 +30,16 @@ class ResetStatesCallback(Callback):
 
 
 class Stocks:
+    def __init__(self, market, sectors, date, train, test, path, pre_trained):
+        self.path, self.market = path, market
+        self.date, self.sectors = date, sectors
+        self.train_period, self.predict_period = train, test
+        self.stock, self.companies = self.get_stock()
+        self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
+        self.X, self.y = self.get_Xy_training()
+        self.model, self.performance, self.pre_trained = None, None, pre_trained
+        self.forcast = None
+
     def get_Xy_training(self):
         """
         Get data features and data labels for training
@@ -139,7 +149,7 @@ class Stocks:
         """
         # Get model
         name = ' '.join(map(str, self.sectors))
-        path = "{self.path}outputs/models/{self.market}/{name}"
+        path = "{self.path}outputs/models/{self.market}/{name}.h5"
         autoencoder = keras.models.load_model(path)
         
         # Load model into object
@@ -196,9 +206,13 @@ class Stocks:
         """
         Save trained model
         """
+        # Get model
+        autoencoder = self.model
+        
+        # Save model
         name = ' '.join(map(str, self.sectors))
-        path = f"{self.path}outputs/models/{self.market}/{name}"
-        self.model.save(path)
+        path = f"{self.path}outputs/models/{self.market}/{name}.h5"
+        autoencoder.save(path)
         
         
     def get_companies(self):
@@ -212,6 +226,7 @@ class Stocks:
         """
         Save model loss
         """
+        name = ' '.join(map(str, self.sectors))
         if self.pre_trained:
             img = cv.imread(f"{self.path}outputs/models/{self.market}/{name}model_loss.jpg", cv2.IMREAD_COLOR)
             img = cv.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -284,8 +299,9 @@ class Stocks:
         # Get prediction on 7 days into the future
         y_forecast_norm = autoencoder.predict(X_forecast_norm, batch_size = 2)
 
-        # Convert the result back to stock price (i.e., de-normalization) for visualization purpose
-        y_forecast = denormalization(X_forecast_norm, y_forecast_norm)
+        # Convert the result back to stock price and save it
+        y_forecast = denormalization(X_forecast, y_forecast_norm)
+        self.forcast = y_forecast
 
         # Plot the subset splits
         fig, ax = plt.subplots(figsize = (10, 5))
@@ -298,16 +314,63 @@ class Stocks:
         
         return y_forecast
         
+        
+    def get_portfolio(self):
+        """
+        Get the list of companies to hold either when investors are risk-taking or prudent
+        """
+        # Get stock value
+        y, companies, risky, prudent = self.companies, self.forcast, {}, {}
+        
+        # Categorize into risky & prudent
+        for company_id in range(len(companies)):
+            # Convert to np.ndarray
+            stk = np.array(y[:,0,company_id:company_id+2])
+            stk_mean = np.array([(x[0]+x[1])/2 for x in stk]).flatten()
+            
+            # Get low and high time
+            low, high = stk.copy().flatten().argmin(), stk.copy().flatten().argmax()
+            low_day, high_day = int(low // 2), int(high // 2)
+            
+            # Get trend
+            trend_mon = round(stk_mean[-1] - stk_mean[0], 3)
+            trend_per = (trend_mon/stk_mean[0] + 1) * abs(high_day - low_day) / 7
+            direction = True if trend_mon > 0 else False
+            
+            # Get recommendations
+            price_buy, price_sell = stk[low_day][low_when[0]], stk[high_day][high_when[0]]
+            price_profit = price_sell - price_buy
+            if not direction:
+                price_risk = price_sell * trend_per - price_buy if high_day < low_day else price_buy - price_buy * trend_per
+            else:
+                price_risk = price_sell - price_buy * trend_per if high_day < low_day else price_sell - price_sell * trend_per
+
+            if price_risk > price_profit:
+                risky[companies[company_id]] = round(price_profit, 3)
+            else:
+                prudent[companies[company_id]] = round(price_profit, 3)
+                
+        # Sort by profit in DESC
+        sorted_risky = {list(risky.keys())[i]: list(risky.values())[i] for i in np.argsort(list(risky.values()))[-1]}
+        sorted_prudent = {list(prudent.keys())[i]: list(prudent.values())[i] for i in np.argsort(list(prudent.values()))[-1]}
+
+        return sorted_risky, sorted_prudent
+        
     
-    def get_statistics(self, y, currency = "$"):
+    def get_statistics(self, company, currency = "$"):
         """
         Get stock statistics
         """
+        # Get company id and stock values
+        company_id = self.companies.index(company)
+        y = self.forcast
+
         # Convert to np.ndarray
-        stk = np.array(y)
-        stk_mean = np.array([(x[0]+x[1])/2 for x in stk])
+        stk = np.array(y[:,0,company_id:company_id+2])
+        stk_mean = np.array([(x[0]+x[1])/2 for x in stk]).flatten()
         
         # Get descriptive values
+        current = round(stk[0][0], 3)
         low = round(stk.copy().flatten().min(), 3)
         high = round(stk.copy().flatten().max(), 3)
         avg = round(stk_mean.mean(), 3)
@@ -316,25 +379,30 @@ class Stocks:
         direction = "Increase" if trend_mon > 0 else "Decrease"
         
         # Print stock stats
-        print("Stock statistics for the next 7 days:")
-        print(f"\t - Lowest price: {low} {currency}")
-        print(f"\t - Average price: {avg} {currency}")
-        print(f"\t - Highest price: {high} {currency}")
-        print(f"\t - Trend: {direction} {trend_mon} {currency} ({trend_per}%)")
+        print(f"Stock statistics for {company} in the next 7 days:")
+        print(f"  - Current price: {currency}{current}/share")
+        print(f"  - Lowest price: {currency}{low}/share")
+        print(f"  - Average price: {currency}{avg}/share")
+        print(f"  - Highest price: {currency}{high}/share")
+        print(f"  - Trend: {direction} {currency}{trend_mon}/share ({trend_per}%)")
         
         
-    def get_recommendation(self, y, currency = "$"):
+    def get_recommendation(self, company, currency = "$"):
         """
         Get recommendation for trading stocks
         """
+        # Get company id and stock values
+        company_id = self.companies.index(company)
+        y = self.forcast
+
         # Convert to np.ndarray
-        stk = np.array(y)
-        stk_mean = np.array([(x[0]+x[1])/2 for x in stk])
+        stk = np.array(y[:,0,company_id:company_id+2])
+        stk_mean = np.array([(x[0]+x[1])/2 for x in stk]).flatten()
         
         # Get low time
         low = stk.copy().flatten().argmin()
         low_day = int(low // 2)
-        low_when = [0, "opening"] if stk[low_day][0] < stklow_day[1] else [1, "close"]
+        low_when = [0, "opening"] if stk[low_day][0] < stk[low_day][1] else [1, "close"]
         
         # Get high time
         high = stk.copy().flatten().argmax()
@@ -343,44 +411,40 @@ class Stocks:
         
         # Get trend
         trend_mon = round(stk_mean[-1] - stk_mean[0], 3)
-        trend_per = round(trend_mon/stk_mean[0]*100, 3) * abs(high_day < low_day) / 7
+        trend_per = (trend_mon/stk_mean[0] + 1) * abs(high_day - low_day) / 7
         direction = "Increase" if trend_mon > 0 else "Decrease"
         
         # Get recommendations
         price_buy = round(stk[low_day][low_when[0]], 3)
         price_sell = round(stk[high_day][high_when[0]], 3)
-        price_profit = price_buy - price_sell
+        price_profit = round(price_sell - price_buy, 3)
         if direction == "Decrease":
-            sell = "Now" if high_day == 0 else f"On {high_when[1]} of the {high_day}-th day"
-            buy = "Later" if low_day == stk.shape[0] else f"On {low_when[1]} of the {low_day}-th day"
+            sell = "right now" if high_day == 0 else f"on {high_when[1]} of the {high_day}-th day"
+            buy = "later" if low_day == stk.shape[0] else f"on {low_when[1]} of the {low_day}-th day"
             price_risk = price_sell * trend_per - price_buy if high_day < low_day else price_buy - price_buy * trend_per
         elif direction == "Increase":
-            buy = "Now" if low_day == 0 else f"On {low_when[1]} of the {low_day}-th day"
-            sell = "Later" if high_day == stk.shape[0] else f"On {high_when[1]} of the {high_day}-th day"
+            buy = "right now" if low_day == 0 else f"on {low_when[1]} of the {low_day}-th day"
+            sell = "later" if high_day == stk.shape[0] else f"on {high_when[1]} of the {high_day}-th day"
             price_risk = price_sell - price_buy * trend_per if high_day < low_day else price_sell - price_sell * trend_per
-        
+        price_risk = round(price_risk, 3)
+        conclusion = "RISKY!" if price_risk > price_profit else "The risk is acceptable, you can buy some shares"
+
         # Print stock recommendations
-        print("Trading recommendation for the next 7 days:")
-        print(f"\t - Buy:")
-        print(f"\t\t + When to buy: {buy}")
-        print(f"\t\t + Buy price: {currency} {price_buy}/share")
-        print(f"\t - Sell:")
-        print(f"\t\t + When to buy: {sell}")
-        print(f"\t\t + Sell price: {currency} {price_sell}/share")
-        print(f"\t - Profit: {currency} {price_profit}/share")
+        print(f"Trading recommendation for {company} in the next 7 days:")
+        print(f"  - Best buying: {currency}{price_buy}/share {buy}")
+        print(f"  - Best selling: {currency}{price_sell}/share {sell}")
+        print(f"  - Trading profit: {currency}{price_profit}/share")
+        print(f"  - Trading risk: {currency}{price_risk}/share")
+        print(f"=> Conclusion: {conclusion}")
+        
+        return price_profit, price_risk
         
 
 class VietnamStocks(Stocks):
     def __init__(self, market, sectors, date = "2007-01-11", train = 30, test = 7, path = "", pre_trained = False):
-        self.path = path
-        self.date, self.sectors = date, sectors
-        self.train_period, self.predict_period = train, test # days
-        self.market = market if market == "UPCOM" else "UNX"
+        this_market = market if market == "UPCOM" else "UNX"
         self.dataset = "UpcomIndex" if market == "UPCOM" else "UNXIndex"
-        self.stock, self.companies = self.get_stock()
-        self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
-        self.X, self.y = self.get_Xy_training()
-        self.model, self.performance, self.pre_trained = None, None, pre_trained
+        Stocks.__init__(self, this_market, sectors, date, train, test, path, pre_trained)
     
     
     def get_stock(self):
@@ -424,14 +488,7 @@ class VietnamStocks(Stocks):
         
 class NasdaqStocks(Stocks):
     def __init__(self, sectors, date = "04-01-2007", train = 30, test = 7, path = "", pre_trained = False):
-        self.path, self.market = path, "NASDAQ"
-        self.date, self.sectors = date, sectors
-        self.train_period, self.predict_period = train, test # days
-        self.stock, self.companies = self.get_stock()
-        self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
-        self.X, self.y = self.get_Xy_training()
-        self.model, self.performance, self.pre_trained = None, None, pre_trained
-    
+        Stocks.__init__(self, "NASDAQ", sectors, date, train, test, path, pre_trained)
     
     def get_stock(self):
         """
