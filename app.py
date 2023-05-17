@@ -1,15 +1,6 @@
-# Load libraries
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import tensorflow as tf
-import keras
-import glob
-import inspect
-import textwrap
+# Load libraries and models
 import streamlit as st
-
-# Import models
+import io
 from utils.models import VietnamStocks, NasdaqStocks
 
 def main():
@@ -38,50 +29,51 @@ def main():
         
         # Choose company
         companies = {
-            "Banks": ,
-            "Basic Resources": ,
-            "Chemicals": ,
+            "Banks": [],
+            "Basic Resources": [],
+            "Chemicals": [],
             "Consumer Non-Durables": ["MDLZ", "MNST"],
             "Consumer Services": ["CMCSA", "SBUX", "MAR", "CTAS", "SIRI"],
-            "Financial Services": ,
-            "Food & Beverage": ,
+            "Financial Services": [],
+            "Food & Beverage": [],
             "Health Technology": ["ISRG", "AMGN", "GILD", "REGN", "ILMN", "VRTX", "IDXX", "ALGN", "DXCM", "BIIB", "SGEN"],
             "Retail Trade": ["AMZN", "COST", "ORLY", "WBA", "EBAY", "ROST", "DLTR"],
-            "Technology",
+            "Technology": [],
             "Technology Services": ["MSFT", "CSCO", "NFLX", "INTU", "ADP", "FISV", "ADSK", "NTES", "SNPS", "BIDU", "CDNS", "PAYX", "CTSH", "VRSN"]}
         company_options = companies[sector_selected]
         company_selected = st.selectbox(
             label = "Choose a sector",
             options = company_options,
         )
+
+    # Build model
+    if market_selected == "NASDAQ":
+        stk_model = NasdaqStocks(market = market_selected, sectors = [sector_selected], pre_trained = True)
+    else:
+        stk_model = VietnamStocks(market = market_selected, sectors = [sector_selected], pre_trained = True)
         
+    _ = stk_model.init_model()
+    
+    # Forecast
+    _, mse, img_test = stk_model.get_test(company_selected)
+    _, img_forecast = stk_model.get_forecast(company_selected)
+    
+    # Get recommendations
+    sec_port = stk_model.get_portfilio()
+    com_stat = stk_model.get_statistics(company_selected)
+    com_rec = stk_model.get_recommendation(company_selected)
         
-        demo, url = (
-            ST_DEMOS[selected_page]
-            if selected_api == "echarts"
-            else ST_PY_DEMOS[selected_page]
-        )
-
-        if selected_api == "echarts":
-            st.caption(
-                """ECharts demos are extracted from https://echarts.apache.org/examples/en/index.html,
-            by copying/formattting the 'option' json object into st_echarts.
-            Definitely check the echarts example page, convert the JSON specs to Python Dicts and you should get a nice viz."""
-            )
-        if selected_api == "pyecharts":
-            st.caption(
-                """Pyecharts demos are extracted from https://github.com/pyecharts/pyecharts-gallery,
-            by copying the pyecharts object into st_pyecharts.
-            Pyecharts is still using ECharts 4 underneath, which is why the theming between st_echarts and st_pyecharts is different."""
-            )
-
-    demo()
-
-    sourcelines, _ = inspect.getsourcelines(demo)
-    with st.expander("Source Code"):
-        st.code(textwrap.dedent("".join(sourcelines[1:])))
-    st.markdown(f"Credit: {url}")
-
+    # Display
+    st.header("Sector overview")
+    st.markdown(sec_port)
+    st.header("Model performance")
+    st.image(img_test, channels = color)
+    st.markdown(f"Testing's mean squared error: {mse}")
+    st.header("Future forecast")
+    st.image(img_forecast, channels = color)
+    st.markdown(com_stat)
+    st.markdown(com_rec)
+        
 
 if __name__ == "__main__":
     st.set_page_config(

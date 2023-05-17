@@ -1,0 +1,10 @@
+numpy==1.24.2
+pandas
+matplotlib
+opencv-python-headless
+streamlit==1.18.1
+tensorflow
+keras
+glob
+scikit-learn
+functools

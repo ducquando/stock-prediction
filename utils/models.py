@@ -16,6 +16,7 @@ from keras.optimizers import Adam
 from keras.callbacks import Callback
 from keras.layers import LSTM, Dropout, RepeatVector
 from stocks.utils.helpers import min_max_normalize, denormalization, candlestick3D
+from matplotlib.backends.backend_agg import FigureCanvas
 
 
 class ResetStatesCallback(Callback):
@@ -134,7 +135,7 @@ class Stocks:
         """
         # Get model
         name = ' '.join(map(str, self.sectors))
-        path = f"{self.path}outputs/models/{self.market}/{name}.h5"
+        path = f"{self.path}models/{self.market}/{name}.h5"
         autoencoder = keras.models.load_model(path)
         
         # Load model into object
@@ -196,7 +197,7 @@ class Stocks:
         
         # Save model
         name = ' '.join(map(str, self.sectors))
-        path = f"{self.path}outputs/models/{self.market}/{name}.h5"
+        path = f"{self.path}models/{self.market}/{name}.h5"
         autoencoder.save(path)
         
         
@@ -282,7 +283,7 @@ class Stocks:
         """
         name = ' '.join(map(str, self.sectors))
         if self.pre_trained:
-            img = cv.imread(f"{self.path}outputs/models/{self.market}/{name}model_loss.jpg", cv.IMREAD_COLOR)
+            img = cv.imread(f"{self.path}models/{self.market}/{name}model_loss.jpg", cv.IMREAD_COLOR)
             img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
             plt.imshow(img)
         else:
@@ -297,7 +298,12 @@ class Stocks:
             plt.legend(['Training', 'Validation'], loc = 'upper right')
             
             # Save figure
-            plt.savefig(f"{self.path}outputs/models/{self.market}/{name}model_loss.jpg")
+            plt.savefig(f"{self.path}models/{self.market}/{name}model_loss.jpg")
+        
+        # Get img
+        img = cv.cvtColor(cv.imread(f"{self.path}models/{self.market}/{name}model_loss.jpg"), cv.COLOR_BGR2RGB)
+        
+        return img
         
         
     def get_test(self, company, currency = "$"):
@@ -315,10 +321,12 @@ class Stocks:
         ax.set_title(f"{company}: Stock trend")
         plt.xlabel('Time (days)'); plt.ylabel(f'Price ({currency})')
         
-        # Save figure
-        plt.savefig(f"{self.path}outputs/test_{company}.jpg")
+        # Convert figure to image
+        canvas = FigureCanvas(fig)
+        canvas.draw()
+        img = cv.cvtColor(np.array(fig.canvas.get_renderer()._renderer), cv.COLOR_RGB2BGR)
         
-        return y_pred, average_mse
+        return y_pred, average_mse, img
         
         
     def get_forecast(self, company, currency = "$"):
@@ -335,10 +343,12 @@ class Stocks:
         ax.set_title(f"{company}: Stock trend")
         plt.xlabel('Time (days)'); plt.ylabel(f'Price ({currency})')
         
-        # Save figure
-        plt.savefig(f"{self.path}outputs/forecast_{company}.jpg")
+        # Convert figure to image
+        canvas = FigureCanvas(fig)
+        canvas.draw()
+        img = cv.cvtColor(np.array(fig.canvas.get_renderer()._renderer), cv.COLOR_RGB2BGR)
         
-        return y_forecast
+        return y_forecast, img
         
         
     def get_portfolio(self):
@@ -352,8 +362,8 @@ class Stocks:
         # Categorize into risky & prudent
         for company_id in range(len(companies)):
             # Convert to np.ndarray
-            stk = np.array(y[:,0,company_id:company_id+2])
-            stk_mean = np.array([(x[0]+x[1])/2 for x in stk]).flatten()
+            stk = np.array(y[:, 0, 2 * company_id : 2 * company_id + 1])
+            stk_mean = np.array([(x[0] + x[1])/2 for x in stk]).flatten()
             
             # Get low and high time
             low, high = stk.copy().flatten().argmin(), stk.copy().flatten().argmax()
@@ -385,12 +395,8 @@ class Stocks:
         sorted_keeping = {list(keeping.keys())[i]: list(keeping.values())[i] for i in np.argsort(list(keeping.values()))}   # ASC
         sorted_throwing = {list(throwing.keys())[i]: list(throwing.values())[i] for i in np.argsort(list(throwing.values()))}   # ASC
 
-        # Print portfolio management
-        print(f"Portfolio management tips for the next 7 days:")
-        print(f"  - Should hold: {sorted_keeping}")
-        print(f"  - Should sell: {sorted_throwing}")
-        print(f"  - Risk takers: {sorted_risky}")
-        print(f"  - Safety net: {sorted_prudent}")
+        # Return portfolio management statement
+        return "Portfolio management tips for the next 7 days:\n" + f"  - Should hold: {sorted_keeping}" + f"  - Should sell: {sorted_throwing}" + f"  - Risk takers: {sorted_risky}" + f"  - Safety net: {sorted_prudent}"
         
     
     def get_statistics(self, company, currency = "$"):
@@ -402,7 +408,7 @@ class Stocks:
         y = self.forecast
 
         # Convert to np.ndarray
-        stk = np.array(y[:,0,company_id:company_id+2])
+        stk = np.array(y[:, 0, 2 * company_id : 2 * company_id + 1])
         stk_mean = np.array([(x[0]+x[1])/2 for x in stk]).flatten()
         
         # Get descriptive values
@@ -414,13 +420,8 @@ class Stocks:
         trend_per = round(trend_mon/stk_mean[0]*100, 3)
         direction = "Increase" if trend_mon > 0 else "Decrease"
         
-        # Print stock stats
-        print(f"Stock statistics for {company} in the next 7 days:")
-        print(f"  - Current price: {currency}{current}/share")
-        print(f"  - Lowest price: {currency}{low}/share")
-        print(f"  - Average price: {currency}{avg}/share")
-        print(f"  - Highest price: {currency}{high}/share")
-        print(f"  - Trend: {direction} {currency}{trend_mon}/share ({trend_per}%)")
+        # Return stock stats statement
+        return f"Stock statistics for {company} in the next 7 days:" + f"  - Current price: {currency}{current}/share" + f"  - Lowest price: {currency}{low}/share" + f"  - Average price: {currency}{avg}/share" + f"  - Highest price: {currency}{high}/share" + f"  - Trend: {direction} {currency}{trend_mon}/share ({trend_per}%)"
         
         
     def get_recommendation(self, company, currency = "$"):
@@ -432,8 +433,8 @@ class Stocks:
         y = self.forecast
 
         # Convert to np.ndarray
-        stk = np.array(y[:,0,company_id:company_id+2])
-        stk_mean = np.array([(x[0]+x[1])/2 for x in stk]).flatten()
+        stk = np.array(y[:, 0, 2 * company_id : 2 * company_id + 1])
+        stk_mean = np.array([(x[0] + x[1])/2 for x in stk]).flatten()
         
         # Get low time
         low = stk.copy().flatten().argmin()
@@ -465,15 +466,8 @@ class Stocks:
         price_risk = round(price_risk, 3)
         conclusion = "RISKY!" if price_risk > price_profit else "The risk is acceptable, you can buy some shares"
 
-        # Print stock recommendations
-        print(f"Trading recommendation for {company} in the next 7 days:")
-        print(f"  - Best buying: {currency}{price_buy}/share {buy}")
-        print(f"  - Best selling: {currency}{price_sell}/share {sell}")
-        print(f"  - Trading profit: {currency}{price_profit}/share")
-        print(f"  - Trading risk: {currency}{price_risk}/share")
-        print(f"=> Conclusion: {conclusion}")
-        
-        return price_profit, price_risk
+        # Return stock recommendations statement
+        return f"Trading recommendation for {company} in the next 7 days:" + f"  - Best buying: {currency}{price_buy}/share {buy}" + f"  - Best selling: {currency}{price_sell}/share {sell}" + f"  - Trading profit: {currency}{price_profit}/share" + f"  - Trading risk: {currency}{price_risk}/share" + f"=> Conclusion: {conclusion}"
         
 
 class VietnamStocks(Stocks):
@@ -490,7 +484,7 @@ class VietnamStocks(Stocks):
         # Get companies given criteria
         path = self.path + 'dataset/vn/'
         tickers = pd.read_csv(f'{path}ticker-overview.csv')
-        ticker = tickers.loc[(tickers['exchange'] == self.market) & np.array([tickers['industryEn'] == i for i in self.sectors]).any()]["ticker"]
+        ticker = tickers.loc[np.array([tickers['exchange'] == self.market]) & np.array([tickers['industryEn'] == i for i in self.sectors].all(0))]["ticker"]
         
         # Check if we have that dataset
         stks_loc = f'{path}stock-historical-data/'
@@ -538,7 +532,7 @@ class NasdaqStocks(Stocks):
         # Get companies given criteria
         path = self.path + 'dataset/nasdaq/'
         tickers = pd.read_csv(f'{path}nasdaq-100.csv')
-        ticker = tickers.loc[pd.Series(np.array([tickers['Sector'] == i for i in self.sectors]).all(0))]["Ticker"]
+        ticker = tickers.loc[pd.Series(np.array([tickers['Sector'] == i for i in self.sectors]).flatten())]["Ticker"]
         
         # Check if we have that dataset
         stks_loc = f'{path}stock-historical-data/'
