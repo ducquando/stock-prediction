@@ -38,7 +38,8 @@ class Stocks:
         self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
         self.X, self.y = self.get_Xy_training()
         self.model, self.performance, self.pre_trained = None, None, pre_trained
-        self.forcast = None
+        self.forecast, self.pred, self.test, self.mse = None, None, None, None
+        
 
     def get_Xy_training(self):
         """
@@ -125,22 +126,6 @@ class Stocks:
         X_test = X_test.reshape(X_test.shape[0], self.train_period, self.dim_feature)
         
         return X_train, X_val, X_test, y_train, y_val, y_test
-    
-        
-    ## Call functions ##
-    
-    
-    def init_model(self):
-        """
-        Initiate model by loading pre-trained model. If cannot, training new model.
-        """
-        if self.pre_trained:
-            model = self.load_model()
-        else:
-            model = self.train_model()
-            self.save_model()
-        
-        return model
         
         
     def load_model(self):
@@ -200,8 +185,8 @@ class Stocks:
         self.performance = performance
         
         return autoencoder
-    
-    
+        
+        
     def save_model(self):
         """
         Save trained model
@@ -213,6 +198,73 @@ class Stocks:
         name = ' '.join(map(str, self.sectors))
         path = f"{self.path}outputs/models/{self.market}/{name}.h5"
         autoencoder.save(path)
+        
+        
+    def test(self):
+        """
+        Perform testing
+        """
+        # Get training data and model
+        autoencoder = self.model
+        _, _, X_test, _, _, y_test = self.train_val_test_split(self.X, self.y)
+        
+        # MinMax normalize the test data
+        X_test_norm, y_test_norm = min_max_normalize(X_test, y_test)
+        
+        # Get prediction on the test data
+        y_pred_norm = autoencoder.predict(X_test_norm, batch_size = 2)
+        
+        # Calculate the average MSE
+        average_mse = mean_squared_error(y_pred_norm.flatten(), y_test_norm.flatten())
+        
+        # Convert the result back to stock price (i.e., de-normalization) for visualization purpose
+        y_pred = denormalization(X_test, y_pred_norm)
+        
+        # Save results
+        self.pred = y_pred
+        self.test = y_test
+        self.mse = average_mse
+        
+        
+    def forecast(self):
+        """
+        Predict on the future
+        """
+        # Get prediction data and model
+        autoencoder = self.model
+        X_forecast = self.get_X_forecast()
+        
+        # MinMax normalize the data
+        X_forecast_norm, _ = min_max_normalize(X_forecast, np.zeros((2,self.train_period,self.dim_label)))
+
+        # Get prediction on 7 days into the future
+        y_forecast_norm = autoencoder.predict(X_forecast_norm, batch_size = 2)
+
+        # Convert the result back to stock price and save it
+        y_forecast = denormalization(X_forecast, y_forecast_norm)
+        self.forecast = y_forecast
+        
+        return y_forecast
+    
+        
+    ## Call functions ##
+    
+    
+    def init_model(self):
+        """
+        Initiate model by loading pre-trained model. If cannot, training new model.
+        """
+        if self.pre_trained:
+            model = self.load_model()
+        else:
+            model = self.train_model()
+            self.save_model()
+        
+        # Perform predictions
+        self.test()
+        self.forecast()
+        
+        return model
         
         
     def get_companies(self):
@@ -244,30 +296,15 @@ class Stocks:
             
             # Save figure
             plt.savefig(f"{self.path}outputs/models/{self.market}/{name}model_loss.jpg")
-      
-    
-    def test(self, company, currency = "$"):
+        
+        
+    def get_test(self, company, currency = "$"):
         """
-        Perform testing
+        Get and plot test values
         """
-        # Get company id
+        # Get company id and stock values
         company_id = self.companies.index(company)
-        
-        # Get training data and model
-        autoencoder = self.model
-        _, _, X_test, _, _, y_test = self.train_val_test_split(self.X, self.y)
-        
-        # MinMax normalize the test data
-        X_test_norm, y_test_norm = min_max_normalize(X_test, y_test)
-        
-        # Get prediction on the test data
-        y_pred_norm = autoencoder.predict(X_test_norm, batch_size = 2)
-        
-        # Calculate the average MSE
-        average_mse = mean_squared_error(y_pred_norm.flatten(), y_test_norm.flatten())
-        
-        # Convert the result back to stock price (i.e., de-normalization) for visualization purpose
-        y_pred = denormalization(X_test, y_pred_norm)
+        y_pred, y_test = self.pred, self.test
         
         # Plot the subset splits
         fig, ax = plt.subplots(figsize = (10, 5))
@@ -282,27 +319,14 @@ class Stocks:
         return y_pred, average_mse
         
         
-    def forecast(self, company, currency = "$"):
+    def get_forecast(self, company, currency = "$"):
         """
-        Predict on the future
+        Get and plot forecast values
         """
-        # Get company id
+        # Get company id and stock values
         company_id = self.companies.index(company)
+        y_forecast = self.forecast
         
-        # Get prediction data and model
-        autoencoder = self.model
-        X_forecast = self.get_X_forecast()
-        
-        # MinMax normalize the data
-        X_forecast_norm, _ = min_max_normalize(X_forecast, np.zeros((2,self.train_period,self.dim_label)))
-
-        # Get prediction on 7 days into the future
-        y_forecast_norm = autoencoder.predict(X_forecast_norm, batch_size = 2)
-
-        # Convert the result back to stock price and save it
-        y_forecast = denormalization(X_forecast, y_forecast_norm)
-        self.forcast = y_forecast
-
         # Plot the subset splits
         fig, ax = plt.subplots(figsize = (10, 5))
         candlestick3D(ax, y_forecast, company = company_id, colordown = 'blue', full = False)
@@ -320,7 +344,7 @@ class Stocks:
         Get the list of companies to hold either when investors are risk-taking or prudent
         """
         # Get stock value
-        y, companies = self.companies, self.forcast
+        y, companies = self.companies, self.forecast
         risky, prudent, throwing, keeping = {}, {}, {}, {}
         
         # Categorize into risky & prudent
@@ -373,7 +397,7 @@ class Stocks:
         """
         # Get company id and stock values
         company_id = self.companies.index(company)
-        y = self.forcast
+        y = self.forecast
 
         # Convert to np.ndarray
         stk = np.array(y[:,0,company_id:company_id+2])
@@ -403,7 +427,7 @@ class Stocks:
         """
         # Get company id and stock values
         company_id = self.companies.index(company)
-        y = self.forcast
+        y = self.forecast
 
         # Convert to np.ndarray
         stk = np.array(y[:,0,company_id:company_id+2])
