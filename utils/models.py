@@ -375,7 +375,7 @@ class VietnamStocks(Stocks):
         self.path = path
         self.date, self.sectors = date, sectors
         self.train_period, self.predict_period = train, test # days
-        self.markets = market if market == "UPCOM" else "UNX"
+        self.market = market if market == "UPCOM" else "UNX"
         self.dataset = "UpcomIndex" if market == "UPCOM" else "UNXIndex"
         self.stock, self.companies = self.get_stock()
         self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
@@ -390,7 +390,7 @@ class VietnamStocks(Stocks):
         # Get companies given criteria
         path = self.path + 'dataset/vn/'
         tickers = pd.read_csv(f'{path}ticker-overview.csv')
-        ticker = tickers.loc[(tickers['exchange'] == self.markets) & np.array([tickers['industryEn'] == i for i in self.sectors]).any()]["ticker"]
+        ticker = tickers.loc[(tickers['exchange'] == self.market) & np.array([tickers['industryEn'] == i for i in self.sectors]).any()]["ticker"]
         
         # Check if we have that dataset
         stks_loc = f'{path}stock-historical-data/'
@@ -424,7 +424,7 @@ class VietnamStocks(Stocks):
         
 class NasdaqStocks(Stocks):
     def __init__(self, sectors, date = "04-01-2007", train = 30, test = 7, path = "", pre_trained = False):
-        self.path = path
+        self.path, self.market = path, "NASDAQ"
         self.date, self.sectors = date, sectors
         self.train_period, self.predict_period = train, test # days
         self.stock, self.companies = self.get_stock()
