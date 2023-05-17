@@ -320,7 +320,8 @@ class Stocks:
         Get the list of companies to hold either when investors are risk-taking or prudent
         """
         # Get stock value
-        y, companies, risky, prudent = self.companies, self.forcast, {}, {}
+        y, companies = self.companies, self.forcast
+        risky, prudent, throwing, keeping = {}, {}, {}, {}
         
         # Categorize into risky & prudent
         for company_id in range(len(companies)):
@@ -342,19 +343,28 @@ class Stocks:
             price_profit = price_sell - price_buy
             if not direction:
                 price_risk = price_sell * trend_per - price_buy if high_day < low_day else price_buy - price_buy * trend_per
+                throwing[companies[company_id]] = round(price_profit, 3)
             else:
                 price_risk = price_sell - price_buy * trend_per if high_day < low_day else price_sell - price_sell * trend_per
+                keeping[companies[company_id]] = round(price_profit, 3)
 
             if price_risk > price_profit:
                 risky[companies[company_id]] = round(price_profit, 3)
             else:
                 prudent[companies[company_id]] = round(price_profit, 3)
                 
-        # Sort by profit in DESC
-        sorted_risky = {list(risky.keys())[i]: list(risky.values())[i] for i in np.argsort(list(risky.values()))[-1]}
-        sorted_prudent = {list(prudent.keys())[i]: list(prudent.values())[i] for i in np.argsort(list(prudent.values()))[-1]}
+        # Sort by profit
+        sorted_risky = {list(risky.keys())[i]: list(risky.values())[i] for i in np.argsort(list(risky.values()))[-1]}   # DESC
+        sorted_prudent = {list(prudent.keys())[i]: list(prudent.values())[i] for i in np.argsort(list(prudent.values()))[-1]}   # DESC
+        sorted_keeping = {list(keeping.keys())[i]: list(keeping.values())[i] for i in np.argsort(list(keeping.values()))}   # ASC
+        sorted_throwing = {list(throwing.keys())[i]: list(throwing.values())[i] for i in np.argsort(list(throwing.values()))}   # ASC
 
-        return sorted_risky, sorted_prudent
+        # Print portfolio management
+        print(f"Portfolio management tips for the next 7 days:")
+        print(f"  - Should hold: {sorted_keeping}")
+        print(f"  - Should sell: {sorted_throwing}")
+        print(f"  - Risk takers: {sorted_risky}")
+        print(f"  - Safety net: {sorted_prudent}")
         
     
     def get_statistics(self, company, currency = "$"):
