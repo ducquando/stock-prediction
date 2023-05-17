@@ -200,7 +200,7 @@ class Stocks:
         autoencoder.save(path)
         
         
-    def test(self):
+    def test_model(self):
         """
         Perform testing
         """
@@ -226,7 +226,7 @@ class Stocks:
         self.mse = average_mse
         
         
-    def forecast(self):
+    def forecast_model(self):
         """
         Predict on the future
         """
@@ -261,8 +261,8 @@ class Stocks:
             self.save_model()
         
         # Perform predictions
-        self.test()
-        self.forecast()
+        self.test_model()
+        self.forecast_model()
         
         return model
         
@@ -513,8 +513,10 @@ class VietnamStocks(Stocks):
         cols = [[f"Low_{i}", f"Open_{i}", f"Volume_{i}", f"High_{i}", f"Close_{i}", f"Adjusted Close_{i}"] for i in range(1, int(stock.shape[1] / 6) + 1)]
         stock.columns = np.append(np.array("Date"), np.array(cols).flatten())
         
-        # Drop nan values
+        # Drop nan values and extras
         stock = stock.dropna()
+        extras = (len(stock.index) - self.train_period - self.predict_period + 1) % 10
+        stock = stock.drop(index = range(extras))
         stock = stock.reset_index(drop = True)
         
         return stock, companies
@@ -555,8 +557,10 @@ class NasdaqStocks(Stocks):
         cols = [[f"Low_{i}", f"Open_{i}", f"Volume_{i}", f"High_{i}", f"Close_{i}", f"Adjusted Close_{i}"] for i in range(1, int(stock.shape[1] / 6) + 1)]
         stock.columns = np.append(np.array("Date"), np.array(cols).flatten())
         
-        # Drop nan values
+        # Drop nan values and extras
         stock = stock.dropna()
+        extras = (len(stock.index) - self.train_period - self.predict_period + 1) % 10
+        stock = stock.drop(index = range(extras))
         stock = stock.reset_index(drop = True)
         
         return stock, companies
