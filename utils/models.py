@@ -88,8 +88,8 @@ class Stocks:
         
         # Save future prediction features
         periods = len(stock) - self.train_period - self.predict_period
-        periods_future = len(stock) - self.train_period
-        X_future = np.zeros((self.predict_period, self.train_period, self.dim_feature))
+        periods_future = len(stock) - self.train_period + 1
+        X_future = np.zeros((self.predict_period + 1, self.train_period, self.dim_feature))
         
         # Append values
         for i in range(periods, periods_future):
