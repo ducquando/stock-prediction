@@ -264,7 +264,7 @@ class Stocks:
         # Save figure
         plt.savefig(f"{self.path}outputs/test_{company}.jpg")
         
-        return y_pred_norm, y_pred, average_mse
+        return y_pred, average_mse
         
         
     def forecast(self, company, currency = "$"):
@@ -350,11 +350,11 @@ class Stocks:
         price_buy = round(stk[low_day][low_when[0]], 3)
         price_sell = round(stk[high_day][high_when[0]], 3)
         price_profit = price_buy - price_sell
-        if direction = "Decrease":
+        if direction == "Decrease":
             sell = "Now" if high_day == 0 else f"On {high_when[1]} of the {high_day}-th day"
             buy = "Later" if low_day == stk.shape[0] else f"On {low_when[1]} of the {low_day}-th day"
             price_risk = price_sell * trend_per - price_buy if high_day < low_day else price_buy - price_buy * trend_per
-        elif direction = "Increase":
+        elif direction == "Increase":
             buy = "Now" if low_day == 0 else f"On {low_when[1]} of the {low_day}-th day"
             sell = "Later" if high_day == stk.shape[0] else f"On {high_when[1]} of the {high_day}-th day"
             price_risk = price_sell - price_buy * trend_per if high_day < low_day else price_sell - price_sell * trend_per
