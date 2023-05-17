@@ -55,7 +55,7 @@ class Stocks:
         index_label = np.array([[i+1, i+5] for i in range(1, stock.shape[1], 6)]).flatten()
 
         # Split training features and labels
-        periods = len(stock) - self.train_period - self.predict_period + 1
+        periods = len(stock) - self.train_period - self.predict_period
         X, y = np.zeros((periods, self.train_period, self.dim_feature)), np.zeros((periods, self.predict_period, self.dim_label))
 
         # Append values
@@ -87,8 +87,8 @@ class Stocks:
         index_feature = np.array([[i+1, i+5, i, i+3] for i in range(1, stock.shape[1], 6)]).flatten()
         
         # Save future prediction features
-        periods = len(stock) - self.train_period - self.predict_period + 1
-        periods_future = len(stock) - self.train_period + 1
+        periods = len(stock) - self.train_period - self.predict_period
+        periods_future = len(stock) - self.train_period
         X_future = np.zeros((self.predict_period, self.train_period, self.dim_feature))
         
         # Append values
@@ -134,7 +134,7 @@ class Stocks:
         """
         # Get model
         name = ' '.join(map(str, self.sectors))
-        path = "{self.path}outputs/models/{self.market}/{name}.h5"
+        path = f"{self.path}outputs/models/{self.market}/{name}.h5"
         autoencoder = keras.models.load_model(path)
         
         # Load model into object
@@ -212,6 +212,7 @@ class Stocks:
         X_test_norm, y_test_norm = min_max_normalize(X_test, y_test)
         
         # Get prediction on the test data
+        print("Testing 1/1")
         y_pred_norm = autoencoder.predict(X_test_norm, batch_size = 2)
         
         # Calculate the average MSE
@@ -238,6 +239,7 @@ class Stocks:
         X_forecast_norm, _ = min_max_normalize(X_forecast, np.zeros((2,self.train_period,self.dim_label)))
 
         # Get prediction on 7 days into the future
+        print("Forecast 1/1")
         y_forecast_norm = autoencoder.predict(X_forecast_norm, batch_size = 2)
 
         # Convert the result back to stock price and save it
@@ -513,9 +515,12 @@ class VietnamStocks(Stocks):
         cols = [[f"Low_{i}", f"Open_{i}", f"Volume_{i}", f"High_{i}", f"Close_{i}", f"Adjusted Close_{i}"] for i in range(1, int(stock.shape[1] / 6) + 1)]
         stock.columns = np.append(np.array("Date"), np.array(cols).flatten())
         
-        # Drop nan values and extras
+        # Drop nan values
         stock = stock.dropna()
-        extras = (len(stock.index) - self.train_period - self.predict_period + 1) % 10
+        stock = stock.reset_index(drop = True)
+        
+        # Drop extra values
+        extras = (len(stock.index) - self.train_period - self.predict_period) % 10
         stock = stock.drop(index = range(extras))
         stock = stock.reset_index(drop = True)
         
@@ -557,9 +562,12 @@ class NasdaqStocks(Stocks):
         cols = [[f"Low_{i}", f"Open_{i}", f"Volume_{i}", f"High_{i}", f"Close_{i}", f"Adjusted Close_{i}"] for i in range(1, int(stock.shape[1] / 6) + 1)]
         stock.columns = np.append(np.array("Date"), np.array(cols).flatten())
         
-        # Drop nan values and extras
+        # Drop nan values
         stock = stock.dropna()
-        extras = (len(stock.index) - self.train_period - self.predict_period + 1) % 10
+        stock = stock.reset_index(drop = True)
+        
+        # Drop extra values
+        extras = (len(stock.index) - self.train_period - self.predict_period) % 10
         stock = stock.drop(index = range(extras))
         stock = stock.reset_index(drop = True)
         
