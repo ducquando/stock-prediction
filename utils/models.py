@@ -484,7 +484,7 @@ class VietnamStocks(Stocks):
         # Get companies given criteria
         path = self.path + 'dataset/vn/'
         tickers = pd.read_csv(f'{path}ticker-overview.csv')
-        ticker = tickers.loc[pd.Series(np.array([tickers['exchange'] == self.market]) & np.array([tickers['industryEn'] == i for i in self.sectors]).flatten())]["ticker"]
+        ticker = tickers.loc[pd.Series(np.array([tickers['exchange'] == self.market]).flatten() & np.array([tickers['industryEn'] == i for i in self.sectors]).flatten())]["ticker"]
         
         # Check if we have that dataset
         stks_loc = f'{path}stock-historical-data/'
