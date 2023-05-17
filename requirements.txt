@@ -5,6 +5,5 @@ opencv-python-headless
 streamlit==1.18.1
 tensorflow
 keras
-glob
 scikit-learn
-functools
+glob2
