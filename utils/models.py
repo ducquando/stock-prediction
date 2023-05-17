@@ -112,8 +112,11 @@ class Stocks:
         
         return X_train, X_val, X_test, y_train, y_val, y_test
     
+        
+    ## Call functions ##
     
-    def train_model(self):
+    
+    def train_model(self, *kwargs):
         """
         Train the model
         """
@@ -131,10 +134,10 @@ class Stocks:
             LSTM(50, return_sequences = True, stateful = True, batch_input_shape = (2, self.train_period, self.dim_feature)),
             Dropout(0.5),
             ## Many to many
-            LSTM(50, return_sequences = True, stateful = True),
+            LSTM(100, return_sequences = True, stateful = True),
             Dropout(0.5),
             ## Many to one
-            LSTM(50, stateful = True),
+            LSTM(100, stateful = True),
             
             # Decoder
             ## One to many
@@ -146,15 +149,14 @@ class Stocks:
             LSTM(self.dim_label, return_sequences = True, stateful = True)
         ], name = "LSTM_many_to_many")
         
+        model = kwargs.get('model_skeleton', autoencoder)
+        
         # Compile and train the model with Mean Squared Error loss function
-        autoencoder.compile(optimizer = Adam(learning_rate = 1e-5), loss = 'mse', metrics = ['mse'])
-        lstm_performance = autoencoder.fit(X_train_norm, y_train_norm, validation_data = (X_val_norm, y_val_norm), shuffle = False, epochs = 15, batch_size = 2, callbacks = [ResetStatesCallback()])
-        self.model = autoencoder
+        model.compile(optimizer = Adam(learning_rate = 1e-5), loss = 'mse', metrics = ['mse'])
+        lstm_performance = model.fit(X_train_norm, y_train_norm, validation_data = (X_val_norm, y_val_norm), shuffle = False, epochs = 15, batch_size = 2, callbacks = [ResetStatesCallback()])
+        self.model = model
         
         return lstm_performance
-    
-    
-    ## Call functions ##
     
         
     def get_companies(self):
@@ -179,21 +181,22 @@ class Stocks:
         plt.savefig(f"{path}outputs/model_loss.jpg")
       
     
-    def test(self, company, path = ""):
+    def test(self, company, path = "", currency = "$"):
         """
         Perform testing
         """
         # Get company id
         company_id = self.companies.index(company)
         
-        # Get training data
+        # Get training data and model
+        autoencoder = self.model
         _, _, X_test, _, _, y_test = self.train_val_test_split(self.X, self.y)
         
         # MinMax normalize the test data
         X_test_norm, y_test_norm = min_max_normalize(X_test, y_test)
         
         # Get prediction on the test data
-        y_pred_norm = self.model.predict(X_test_norm, batch_size = 2)
+        y_pred_norm = autoencoder.predict(X_test_norm, batch_size = 2)
         
         # Calculate the average MSE
         average_mse = mean_squared_error(y_pred_norm.flatten(), y_test_norm.flatten())
@@ -206,22 +209,23 @@ class Stocks:
         candlestick3D(ax, y_pred, company = company_id, colordown = 'blue', full = False)
         candlestick3D(ax, y_test, company = company_id, colordown = 'red', full = False)
         ax.set_title(f"{company}: Stock trend")
-        plt.xlabel('Time (days)'); plt.ylabel('Price in $')
+        plt.xlabel('Time (days)'); plt.ylabel(f'Price ({currency})')
         
         # Save figure
         plt.savefig(f"{path}outputs/test_{company}.jpg")
         
-        return average_mse
+        return y_pred_norm, y_pred, average_mse
         
         
-    def forecast(self, company, path = ""):
+    def forecast(self, company, path = "", currency = "$"):
         """
         Predict on the future
         """
         # Get company id
         company_id = self.companies.index(company)
         
-        # Get prediction data
+        # Get prediction data and model
+        autoencoder = self.model
         X_forecast = self.get_X_forecast()
         
         # MinMax normalize the data
@@ -237,10 +241,12 @@ class Stocks:
         fig, ax = plt.subplots(figsize = (10, 5))
         candlestick3D(ax, y_forecast_pred, company = company_id, colordown = 'blue', full = False)
         ax.set_title(f"{company}: Stock trend")
-        plt.xlabel('Time (days)'); plt.ylabel('Price in $')
+        plt.xlabel('Time (days)'); plt.ylabel(f'Price ({currency})')
         
         # Save figure
         plt.savefig(f"{path}outputs/forecast_{company}.jpg")
+        
+        return y_forecast_norm, y_forecast_pred
 
 
 class VietnamStocks(Stocks):
@@ -329,7 +335,7 @@ class NasdaqStocks(Stocks):
                 data_frames.append(data)
                 
         # Merge into one
-        stock = reduce(lambda left, right: pd.merge(left, right, on = ['TradingDate'], how = 'outer'), data_frames)
+        stock = reduce(lambda left, right: pd.merge(left, right, on = ['Date'], how = 'outer'), data_frames)
         cols = [[f"Low_{i}", f"Open_{i}", f"Volume_{i}", f"High_{i}", f"Close_{i}", f"Adjusted Close_{i}"] for i in range(1, int(stock.shape[1] / 6) + 1)]
         stock.columns = np.append(np.array("Date"), np.array(cols).flatten())
         
