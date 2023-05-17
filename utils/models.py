@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import cv2 as cv
 import tensorflow as tf
 import keras
 import glob
@@ -93,10 +94,13 @@ class Stocks:
         return X_future
     
     
-    def train_val_test_split(self, X, y):
+    def train_val_test_split(self, X_input, y_input):
         """
         Split the given set into training, validation, and testing with 6/2/2 ratio
         """
+        X = X_input.copy()
+        y = y_input.copy()
+        
         # Split data into train, val and test
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, shuffle = False)
         X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size = 0.25, shuffle = False)
@@ -116,7 +120,35 @@ class Stocks:
     ## Call functions ##
     
     
-    def train_model(self, **kwargs):
+    def init_model(self):
+        """
+        Initiate model by loading pre-trained model. If cannot, training new model.
+        """
+        if self.pre_trained:
+            model = self.load_model()
+        else:
+            model = self.train_model()
+            self.save_model()
+        
+        return model
+        
+        
+    def load_model(self):
+        """
+        Load pre-trained model
+        """
+        # Get model
+        name = ' '.join(map(str, self.sectors))
+        path = "{self.path}outputs/models/{self.market}/{name}"
+        autoencoder = keras.models.load_model(path)
+        
+        # Load model into object
+        self.model = autoencoder
+        
+        return autoencoder
+        
+    
+    def train_model(self):
         """
         Train the model
         """
@@ -149,15 +181,25 @@ class Stocks:
             LSTM(self.dim_label, return_sequences = True, stateful = True)
         ], name = "LSTM_many_to_many")
         
-        model = kwargs.get('model_skeleton', autoencoder)
-        
         # Compile and train the model with Mean Squared Error loss function
-        model.compile(optimizer = Adam(learning_rate = 1e-5), loss = 'mse', metrics = ['mse'])
-        lstm_performance = model.fit(X_train_norm, y_train_norm, validation_data = (X_val_norm, y_val_norm), shuffle = False, epochs = 15, batch_size = 2, callbacks = [ResetStatesCallback()])
-        self.model = model
+        autoencoder.compile(optimizer = Adam(learning_rate = 1e-5), loss = 'mse', metrics = ['mse'])
+        performance = autoencoder.fit(X_train_norm, y_train_norm, validation_data = (X_val_norm, y_val_norm), shuffle = False, epochs = 15, batch_size = 2, callbacks = [ResetStatesCallback()])
         
-        return lstm_performance
+        # Load model into object
+        self.model = autoencoder
+        self.performance = performance
+        
+        return autoencoder
     
+    
+    def save_model(self):
+        """
+        Save trained model
+        """
+        name = ' '.join(map(str, self.sectors))
+        path = f"{self.path}outputs/models/{self.market}/{name}"
+        self.model.save(path)
+        
         
     def get_companies(self):
         """
@@ -166,22 +208,30 @@ class Stocks:
         return self.companies
     
 
-    def plot_model_loss(self, performance, path = ""):
+    def plot_model_loss(self):
         """
         Save model loss
         """
-        # Draw figure
-        fig = plt.figure(figsize = (10, 5))
-        plt.plot(performance.history['loss']);
-        plt.plot(performance.history['val_loss'])
-        plt.title('Model Loss'); plt.xlabel('Epoch'); plt.ylabel('Loss')
-        plt.legend(['Training', 'Validation'], loc = 'upper right')
-        
-        # Save figure
-        plt.savefig(f"{path}outputs/model_loss.jpg")
+        if self.pre_trained:
+            img = cv.imread(f"{self.path}outputs/models/{self.market}/{name}model_loss.jpg", cv2.IMREAD_COLOR)
+            img = cv.cvtColor(img, cv2.COLOR_BGR2RGB)
+            plt.imshow(img)
+        else:
+            # Get model performance
+            performance = self.performance
+            
+            # Draw figure
+            fig = plt.figure(figsize = (10, 5))
+            plt.plot(performance.history['loss']);
+            plt.plot(performance.history['val_loss'])
+            plt.title('Model Loss'); plt.xlabel('Epoch'); plt.ylabel('Loss')
+            plt.legend(['Training', 'Validation'], loc = 'upper right')
+            
+            # Save figure
+            plt.savefig(f"{self.path}outputs/models/{self.market}/{name}model_loss.jpg")
       
     
-    def test(self, company, path = "", currency = "$"):
+    def test(self, company, currency = "$"):
         """
         Perform testing
         """
@@ -212,12 +262,12 @@ class Stocks:
         plt.xlabel('Time (days)'); plt.ylabel(f'Price ({currency})')
         
         # Save figure
-        plt.savefig(f"{path}outputs/test_{company}.jpg")
+        plt.savefig(f"{self.path}outputs/test_{company}.jpg")
         
         return y_pred_norm, y_pred, average_mse
         
         
-    def forecast(self, company, path = "", currency = "$"):
+    def forecast(self, company, currency = "$"):
         """
         Predict on the future
         """
@@ -235,23 +285,94 @@ class Stocks:
         y_forecast_norm = autoencoder.predict(X_forecast_norm, batch_size = 2)
 
         # Convert the result back to stock price (i.e., de-normalization) for visualization purpose
-        y_forecast_pred = denormalization(X_forecast_norm, y_forecast_norm)
+        y_forecast = denormalization(X_forecast_norm, y_forecast_norm)
 
         # Plot the subset splits
         fig, ax = plt.subplots(figsize = (10, 5))
-        candlestick3D(ax, y_forecast_pred, company = company_id, colordown = 'blue', full = False)
+        candlestick3D(ax, y_forecast, company = company_id, colordown = 'blue', full = False)
         ax.set_title(f"{company}: Stock trend")
         plt.xlabel('Time (days)'); plt.ylabel(f'Price ({currency})')
         
         # Save figure
-        plt.savefig(f"{path}outputs/forecast_{company}.jpg")
+        plt.savefig(f"{self.path}outputs/forecast_{company}.jpg")
         
-        return y_forecast_norm, y_forecast_pred
-
+        return y_forecast
+        
+    
+    def get_statistics(self, y, currency = "$"):
+        """
+        Get stock statistics
+        """
+        # Convert to np.ndarray
+        stk = np.array(y)
+        stk_mean = np.array([(x[0]+x[1])/2 for x in stk])
+        
+        # Get descriptive values
+        low = round(stk.copy().flatten().min(), 3)
+        high = round(stk.copy().flatten().max(), 3)
+        avg = round(stk_mean.mean(), 3)
+        trend_mon = round(stk_mean[-1] - stk_mean[0], 3)
+        trend_per = round(trend_mon/stk_mean[0]*100, 3)
+        direction = "Increase" if trend_mon > 0 else "Decrease"
+        
+        # Print stock stats
+        print("Stock statistics for the next 7 days:")
+        print(f"\t - Lowest price: {low} {currency}")
+        print(f"\t - Average price: {avg} {currency}")
+        print(f"\t - Highest price: {high} {currency}")
+        print(f"\t - Trend: {direction} {trend_mon} {currency} ({trend_per}%)")
+        
+        
+    def get_recommendation(self, y, currency = "$"):
+        """
+        Get recommendation for trading stocks
+        """
+        # Convert to np.ndarray
+        stk = np.array(y)
+        stk_mean = np.array([(x[0]+x[1])/2 for x in stk])
+        
+        # Get low time
+        low = stk.copy().flatten().argmin()
+        low_day = int(low // 2)
+        low_when = [0, "opening"] if stk[low_day][0] < stklow_day[1] else [1, "close"]
+        
+        # Get high time
+        high = stk.copy().flatten().argmax()
+        high_day = int(high // 2)
+        high_when = [0, "opening"] if stk[high_day][0] > stk[high_day][1] else [1, "close"]
+        
+        # Get trend
+        trend_mon = round(stk_mean[-1] - stk_mean[0], 3)
+        trend_per = round(trend_mon/stk_mean[0]*100, 3) * abs(high_day < low_day) / 7
+        direction = "Increase" if trend_mon > 0 else "Decrease"
+        
+        # Get recommendations
+        price_buy = round(stk[low_day][low_when[0]], 3)
+        price_sell = round(stk[high_day][high_when[0]], 3)
+        price_profit = price_buy - price_sell
+        if direction = "Decrease":
+            sell = "Now" if high_day == 0 else f"On {high_when[1]} of the {high_day}-th day"
+            buy = "Later" if low_day == stk.shape[0] else f"On {low_when[1]} of the {low_day}-th day"
+            price_risk = price_sell * trend_per - price_buy if high_day < low_day else price_buy - price_buy * trend_per
+        elif direction = "Increase":
+            buy = "Now" if low_day == 0 else f"On {low_when[1]} of the {low_day}-th day"
+            sell = "Later" if high_day == stk.shape[0] else f"On {high_when[1]} of the {high_day}-th day"
+            price_risk = price_sell - price_buy * trend_per if high_day < low_day else price_sell - price_sell * trend_per
+        
+        # Print stock recommendations
+        print("Trading recommendation for the next 7 days:")
+        print(f"\t - Buy:")
+        print(f"\t\t + When to buy: {buy}")
+        print(f"\t\t + Buy price: {currency} {price_buy}/share")
+        print(f"\t - Sell:")
+        print(f"\t\t + When to buy: {sell}")
+        print(f"\t\t + Sell price: {currency} {price_sell}/share")
+        print(f"\t - Profit: {currency} {price_profit}/share")
+        
 
 class VietnamStocks(Stocks):
-    def __init__(self, market, sectors, date = "2007-01-11", train = 30, test = 7, path = "", pre_trained = None):
-        self.path = path + 'dataset/vn/'
+    def __init__(self, market, sectors, date = "2007-01-11", train = 30, test = 7, path = "", pre_trained = False):
+        self.path = path
         self.date, self.sectors = date, sectors
         self.train_period, self.predict_period = train, test # days
         self.markets = market if market == "UPCOM" else "UNX"
@@ -259,7 +380,7 @@ class VietnamStocks(Stocks):
         self.stock, self.companies = self.get_stock()
         self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
         self.X, self.y = self.get_Xy_training()
-        self.model = pre_trained
+        self.model, self.performance, self.pre_trained = None, None, pre_trained
     
     
     def get_stock(self):
@@ -267,12 +388,13 @@ class VietnamStocks(Stocks):
         Get a dataframe contains the stocks of all companies in the given time period that matches the criteria
         """
         # Get companies given criteria
-        tickers = pd.read_csv(f'{self.path}ticker-overview.csv')
+        path = self.path + 'dataset/vn/'
+        tickers = pd.read_csv(f'{path}ticker-overview.csv')
         ticker = tickers.loc[(tickers['exchange'] == self.markets) & np.array([tickers['industryEn'] == i for i in self.sectors]).any()]["ticker"]
         
         # Check if we have that dataset
-        stks_loc = f'{self.path}stock-historical-data/'
-        stks, valid, data_frames = glob.glob(stks_loc + '*.csv'), [], []
+        stks_loc = f'{path}stock-historical-data/'
+        stks, valid, dfs, companies = glob.glob(stks_loc + '*.csv'), [], [], []
         for stk in ticker:
             name = f'{stks_loc}{str(stk)}-{self.dataset}-History.csv'
             if name in stks:
@@ -285,10 +407,11 @@ class VietnamStocks(Stocks):
             if len(indexing) == 1:
                 data = data.iloc[indexing.index[0]:,:]
                 data = data[['TradingDate', 'Low', 'Open', 'Volume', 'High', 'Close', 'Close']]
-                data_frames.append(data)
+                dfs.append(data)
+                companies.append(valid[i])
                 
         # Merge into one
-        stock = reduce(lambda left, right: pd.merge(left, right, on = ['TradingDate'], how = 'outer'), data_frames)
+        stock = reduce(lambda left, right: pd.merge(left, right, on = ['TradingDate'], how = 'outer'), dfs)
         cols = [[f"Low_{i}", f"Open_{i}", f"Volume_{i}", f"High_{i}", f"Close_{i}", f"Adjusted Close_{i}"] for i in range(1, int(stock.shape[1] / 6) + 1)]
         stock.columns = np.append(np.array("Date"), np.array(cols).flatten())
         
@@ -296,18 +419,18 @@ class VietnamStocks(Stocks):
         stock = stock.dropna()
         stock = stock.reset_index(drop = True)
         
-        return stock, valid
+        return stock, companies
     
         
 class NasdaqStocks(Stocks):
-    def __init__(self, sectors, date = "04-01-2007", train = 30, test = 7, path = "", pre_trained = None):
-        self.path = path + 'dataset/nasdaq/'
+    def __init__(self, sectors, date = "04-01-2007", train = 30, test = 7, path = "", pre_trained = False):
+        self.path = path
         self.date, self.sectors = date, sectors
         self.train_period, self.predict_period = train, test # days
         self.stock, self.companies = self.get_stock()
         self.dim_feature, self.dim_label = int(self.stock.shape[1] / 6) * 4, int(self.stock.shape[1] / 6) * 2
         self.X, self.y = self.get_Xy_training()
-        self.model = pre_trained
+        self.model, self.performance, self.pre_trained = None, None, pre_trained
     
     
     def get_stock(self):
@@ -315,12 +438,13 @@ class NasdaqStocks(Stocks):
         Get a dataframe contains the stocks of all companies in the given time period that matches the criteria
         """
         # Get companies given criteria
-        tickers = pd.read_csv(f'{self.path}nasdaq-100.csv')
+        path = self.path + 'dataset/nasdaq/'
+        tickers = pd.read_csv(f'{path}nasdaq-100.csv')
         ticker = tickers.loc[pd.Series(np.array([tickers['Sector'] == i for i in self.sectors]).flatten())]["Ticker"] 
         
         # Check if we have that dataset
-        stks_loc = f'{self.path}stock-historical-data/'
-        stks, valid, data_frames = glob.glob(stks_loc + '*.csv'), [], []
+        stks_loc = f'{path}stock-historical-data/'
+        stks, valid, dfs, companies = glob.glob(stks_loc + '*.csv'), [], [], []
         for stk in ticker:
             name = f'{stks_loc}{str(stk)}.csv'
             if name in stks:
@@ -332,10 +456,11 @@ class NasdaqStocks(Stocks):
             indexing = data.loc[data['Date'] == self.date]
             if len(indexing) == 1:
                 data = data.iloc[indexing.index[0]:,:]
-                data_frames.append(data)
+                dfs.append(data)
+                companies.append(valid[i])
                 
         # Merge into one
-        stock = reduce(lambda left, right: pd.merge(left, right, on = ['Date'], how = 'outer'), data_frames)
+        stock = reduce(lambda left, right: pd.merge(left, right, on = ['Date'], how = 'outer'), dfs)
         cols = [[f"Low_{i}", f"Open_{i}", f"Volume_{i}", f"High_{i}", f"Close_{i}", f"Adjusted Close_{i}"] for i in range(1, int(stock.shape[1] / 6) + 1)]
         stock.columns = np.append(np.array("Date"), np.array(cols).flatten())
         
@@ -343,4 +468,4 @@ class NasdaqStocks(Stocks):
         stock = stock.dropna()
         stock = stock.reset_index(drop = True)
         
-        return stock, valid
+        return stock, companies
