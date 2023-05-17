@@ -19,8 +19,8 @@ def main():
         # Choose sector
         sectors = {
             "NASDAQ": ["Consumer Non-Durables", "Consumer Services", "Health Technology", "Retail Trade", "Technology Services"],
-            "UPCOM": ["Banks", "Financial Services", "Food & Beverage"],
-            "HNX": ["Basic Resources", "Chemicals", "Technology"]}
+            "UPCOM": ["Food & Beverage", "Health Care", "Technology"],
+            "HNX": ["Basic Resources", "Chemicals", "Media"]}
         sector_options = sectors[market_selected]
         sector_selected = st.selectbox(
             label = "Choose a sector",
@@ -29,16 +29,16 @@ def main():
         
         # Choose company
         companies = {
-            "Banks": [],
-            "Basic Resources": [],
-            "Chemicals": [],
+            "Basic Resources": ["NBC", "TKU"],
+            "Chemicals": ["PLC"],
             "Consumer Non-Durables": ["MDLZ", "MNST"],
             "Consumer Services": ["CMCSA", "SBUX", "MAR", "CTAS", "SIRI"],
-            "Financial Services": [],
-            "Food & Beverage": [],
+            "Food & Beverage": ["AGF", "HNM", "ICF", "IFS", "MPC", "TS4"],
             "Health Technology": ["ISRG", "AMGN", "GILD", "REGN", "ILMN", "VRTX", "IDXX", "ALGN", "DXCM", "BIIB", "SGEN"],
+            "Media": ["DAE", "EBS", "HTP", "SGD", "STC", "TPH"],
+            "Real Estate": ["KHA"],
             "Retail Trade": ["AMZN", "COST", "ORLY", "WBA", "EBAY", "ROST", "DLTR"],
-            "Technology": [],
+            "Technology": ["LTC"],
             "Technology Services": ["MSFT", "CSCO", "NFLX", "INTU", "ADP", "FISV", "ADSK", "NTES", "SNPS", "BIDU", "CDNS", "PAYX", "CTSH", "VRSN"]}
         company_options = companies[sector_selected]
         company_selected = st.selectbox(
