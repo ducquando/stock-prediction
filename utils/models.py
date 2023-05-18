@@ -15,7 +15,7 @@ from keras import Sequential
 from keras.optimizers import Adam
 from keras.callbacks import Callback
 from keras.layers import LSTM, Dropout, RepeatVector
-from stocks.utils.helpers import min_max_normalize, denormalization, candlestick3D
+from utils.helpers import min_max_normalize, denormalization, candlestick3D
 from matplotlib.backends.backend_agg import FigureCanvas
 
 
@@ -326,7 +326,7 @@ class Stocks:
         canvas.draw()
         img = cv.cvtColor(np.array(fig.canvas.get_renderer()._renderer), cv.COLOR_RGB2BGR)
         
-        return y_pred, average_mse, img
+        return y_pred, round(self.mse, 3), img
         
         
     def get_forecast(self, company, currency = "$"):
@@ -351,18 +351,19 @@ class Stocks:
         return y_forecast, img
         
         
-    def get_portfolio(self):
+    def get_portfolio(self, currency = "$"):
         """
         Get the list of companies to hold either when investors are risk-taking or prudent
         """
         # Get stock value
-        y, companies = self.companies, self.forecast
+        y, companies = self.forecast, self.companies
         risky, prudent, throwing, keeping = {}, {}, {}, {}
+        decimal = 3 if currency == "$" else 0
         
         # Categorize into risky & prudent
         for company_id in range(len(companies)):
             # Convert to np.ndarray
-            stk = np.array(y[:, 0, 2 * company_id : 2 * company_id + 1])
+            stk = np.array(y[:, 0, 2 * company_id : 2 * company_id + 2])
             stk_mean = np.array([(x[0] + x[1])/2 for x in stk]).flatten()
             
             # Get low and high time
@@ -372,31 +373,36 @@ class Stocks:
             # Get trend
             trend_mon = round(stk_mean[-1] - stk_mean[0], 3)
             trend_per = (trend_mon/stk_mean[0] + 1) * abs(high_day - low_day) / 7
-            direction = True if trend_mon > 0 else False
+            increase = True if trend_mon > 0 else False
             
             # Get recommendations
-            price_buy, price_sell = stk[low_day][low_when[0]], stk[high_day][high_when[0]]
+            price_buy, price_sell = stk[low_day][0], stk[high_day][0]
             price_profit = price_sell - price_buy
-            if not direction:
+            if not increase:
                 price_risk = price_sell * trend_per - price_buy if high_day < low_day else price_buy - price_buy * trend_per
-                throwing[companies[company_id]] = round(price_profit, 3)
+                throwing[companies[company_id]] = round(price_profit, decimal)
             else:
                 price_risk = price_sell - price_buy * trend_per if high_day < low_day else price_sell - price_sell * trend_per
-                keeping[companies[company_id]] = round(price_profit, 3)
+                keeping[companies[company_id]] = round(price_profit, decimal)
 
             if price_risk > price_profit:
-                risky[companies[company_id]] = round(price_profit, 3)
+                risky[companies[company_id]] = round(price_profit, decimal)
             else:
-                prudent[companies[company_id]] = round(price_profit, 3)
+                prudent[companies[company_id]] = round(price_profit, decimal)
                 
         # Sort by profit
-        sorted_risky = {list(risky.keys())[i]: list(risky.values())[i] for i in np.argsort(list(risky.values()))[-1]}   # DESC
-        sorted_prudent = {list(prudent.keys())[i]: list(prudent.values())[i] for i in np.argsort(list(prudent.values()))[-1]}   # DESC
+        sorted_risky = {list(risky.keys())[i]: list(risky.values())[i] for i in np.argsort(list(risky.values()))[:-1]}   # DESC
+        sorted_prudent = {list(prudent.keys())[i]: list(prudent.values())[i] for i in np.argsort(list(prudent.values()))[:-1]}   # DESC
         sorted_keeping = {list(keeping.keys())[i]: list(keeping.values())[i] for i in np.argsort(list(keeping.values()))}   # ASC
-        sorted_throwing = {list(throwing.keys())[i]: list(throwing.values())[i] for i in np.argsort(list(throwing.values()))}   # ASC
+        sorted_throwing = {list(throwing.keys())[i]: list(throwing.values())[i] for i in np.argsort(list(throwing.values()))[:-1]}   # DESC
 
         # Return portfolio management statement
-        return "Portfolio management tips for the next 7 days:\n" + f"  - Should hold: {sorted_keeping}" + f"  - Should sell: {sorted_throwing}" + f"  - Risk takers: {sorted_risky}" + f"  - Safety net: {sorted_prudent}"
+        rec_risky = " ".join([f"    + {i}: {currency}{sorted_risky[i]}/share\n" for i in sorted_risky.keys()])
+        rec_prudent = " ".join([f"    + {i}: {currency}{sorted_prudent[i]}/share\n" for i in sorted_prudent.keys()])
+        rec_keeping = " ".join([f"    + {i}: {currency}{sorted_keeping[i]}/share\n" for i in sorted_keeping.keys()])
+        rec_throwing = " ".join([f"    + {i}: {currency}{sorted_throwing[i]}/share\n" for i in sorted_throwing.keys()])
+         
+        return f"Portfolio management tips for stocks in **{self.market}'s {self.sectors[0]}** sector on the next 7 days:\n" + f"  - Should hold: \n{rec_keeping}\n" + f"  - Should sell: \n{rec_throwing}\n" + f"  - Risk takers: \n{rec_risky}\n" + f"  - Safety net: \n{rec_prudent}"
         
     
     def get_statistics(self, company, currency = "$"):
@@ -406,22 +412,23 @@ class Stocks:
         # Get company id and stock values
         company_id = self.companies.index(company)
         y = self.forecast
+        decimal = 3 if currency == "$" else 0
 
         # Convert to np.ndarray
-        stk = np.array(y[:, 0, 2 * company_id : 2 * company_id + 1])
-        stk_mean = np.array([(x[0]+x[1])/2 for x in stk]).flatten()
+        stk = np.array(y[:, 0, 2 * company_id : 2 * company_id + 2])
+        stk_mean = np.array([(x[0] + x[1])/2 for x in stk]).flatten()
         
         # Get descriptive values
-        current = round(stk[0][0], 3)
-        low = round(stk.copy().flatten().min(), 3)
-        high = round(stk.copy().flatten().max(), 3)
-        avg = round(stk_mean.mean(), 3)
-        trend_mon = round(stk_mean[-1] - stk_mean[0], 3)
-        trend_per = round(trend_mon/stk_mean[0]*100, 3)
+        current = round(stk[0][0], decimal)
+        low = round(stk.copy().flatten().min(), decimal)
+        high = round(stk.copy().flatten().max(), decimal)
+        avg = round(stk_mean.mean(), decimal)
+        trend_mon = round(stk_mean[-1] - stk_mean[0], decimal)
+        trend_per = round(trend_mon/stk_mean[0]*100, decimal)
         direction = "Increase" if trend_mon > 0 else "Decrease"
         
         # Return stock stats statement
-        return f"Stock statistics for {company} in the next 7 days:" + f"  - Current price: {currency}{current}/share" + f"  - Lowest price: {currency}{low}/share" + f"  - Average price: {currency}{avg}/share" + f"  - Highest price: {currency}{high}/share" + f"  - Trend: {direction} {currency}{trend_mon}/share ({trend_per}%)"
+        return f"Stock statistics for **{company}** in the next 7 days:\n" + f"  - Current price: {currency}{current}/share\n" + f"  - Lowest price: {currency}{low}/share\n" + f"  - Average price: {currency}{avg}/share\n" + f"  - Highest price: {currency}{high}/share\n" + f"  - Trend: {direction} {currency}{trend_mon}/share ({trend_per}%)"
         
         
     def get_recommendation(self, company, currency = "$"):
@@ -431,9 +438,10 @@ class Stocks:
         # Get company id and stock values
         company_id = self.companies.index(company)
         y = self.forecast
+        decimal = 3 if currency == "$" else 0
 
         # Convert to np.ndarray
-        stk = np.array(y[:, 0, 2 * company_id : 2 * company_id + 1])
+        stk = np.array(y[:, 0, 2 * company_id : 2 * company_id + 2])
         stk_mean = np.array([(x[0] + x[1])/2 for x in stk]).flatten()
         
         # Get low time
@@ -447,14 +455,14 @@ class Stocks:
         high_when = [0, "opening"] if stk[high_day][0] > stk[high_day][1] else [1, "close"]
         
         # Get trend
-        trend_mon = round(stk_mean[-1] - stk_mean[0], 3)
+        trend_mon = stk_mean[-1] - stk_mean[0]
         trend_per = (trend_mon/stk_mean[0] + 1) * abs(high_day - low_day) / 7
         direction = "Increase" if trend_mon > 0 else "Decrease"
         
         # Get recommendations
-        price_buy = round(stk[low_day][low_when[0]], 3)
-        price_sell = round(stk[high_day][high_when[0]], 3)
-        price_profit = round(price_sell - price_buy, 3)
+        price_buy = round(stk[low_day][low_when[0]], decimal)
+        price_sell = round(stk[high_day][high_when[0]], decimal)
+        price_profit = round(price_sell - price_buy, decimal)
         if direction == "Decrease":
             sell = "right now" if high_day == 0 else f"on {high_when[1]} of the {high_day}-th day"
             buy = "later" if low_day == stk.shape[0] else f"on {low_when[1]} of the {low_day}-th day"
@@ -463,11 +471,11 @@ class Stocks:
             buy = "right now" if low_day == 0 else f"on {low_when[1]} of the {low_day}-th day"
             sell = "later" if high_day == stk.shape[0] else f"on {high_when[1]} of the {high_day}-th day"
             price_risk = price_sell - price_buy * trend_per if high_day < low_day else price_sell - price_sell * trend_per
-        price_risk = round(price_risk, 3)
+        price_risk = round(price_risk, decimal)
         conclusion = "RISKY!" if price_risk > price_profit else "The risk is acceptable, you can buy some shares"
 
         # Return stock recommendations statement
-        return f"Trading recommendation for {company} in the next 7 days:" + f"  - Best buying: {currency}{price_buy}/share {buy}" + f"  - Best selling: {currency}{price_sell}/share {sell}" + f"  - Trading profit: {currency}{price_profit}/share" + f"  - Trading risk: {currency}{price_risk}/share" + f"=> Conclusion: {conclusion}"
+        return f"Trading recommendation for **{company}** in the next 7 days:\n" + f"  - Best buying: {currency}{price_buy}/share {buy}\n" + f"  - Best selling: {currency}{price_sell}/share {sell}\n" + f"  - Trading profit: {currency}{price_profit}/share\n" + f"  - Trading risk: {currency}{price_risk}/share\n" + f"  - Conclusion: {conclusion}\n"
         
 
 class VietnamStocks(Stocks):
