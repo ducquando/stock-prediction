@@ -7,3 +7,4 @@ tensorflow
 keras
 scikit-learn
 glob2
+protobuf==3.19.1
