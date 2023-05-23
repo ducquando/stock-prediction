@@ -378,14 +378,16 @@ class Stocks:
             # Get recommendations
             price_buy, price_sell = stk[low_day][0], stk[high_day][0]
             price_profit = price_sell - price_buy
+            price_risk = round(price_sell - price_sell * trend_per, decimal) if high_day < low_day else round(price_buy * trend_per - price_buy, decimal)
+
+            # Get holding/throwing
             if not increase:
-                price_risk = price_sell * trend_per - price_buy if high_day < low_day else price_buy - price_buy * trend_per
                 throwing[companies[company_id]] = round(price_profit, decimal)
             else:
-                price_risk = price_sell - price_buy * trend_per if high_day < low_day else price_sell - price_sell * trend_per
                 keeping[companies[company_id]] = round(price_profit, decimal)
 
-            if price_risk > price_profit:
+            # Get prudent/risker
+            if price_risk < 0:
                 risky[companies[company_id]] = round(price_profit, decimal)
             else:
                 prudent[companies[company_id]] = round(price_profit, decimal)
@@ -466,13 +468,23 @@ class Stocks:
         if direction == "Decrease":
             sell = "right now" if high_day == 0 else f"on {high_when[1]} of the {high_day}-th day"
             buy = "later" if low_day == stk.shape[0] else f"on {low_when[1]} of the {low_day}-th day"
-            price_risk = price_sell * trend_per - price_buy if high_day < low_day else price_buy - price_buy * trend_per
         elif direction == "Increase":
             buy = "right now" if low_day == 0 else f"on {low_when[1]} of the {low_day}-th day"
             sell = "later" if high_day == stk.shape[0] else f"on {high_when[1]} of the {high_day}-th day"
-            price_risk = price_sell - price_buy * trend_per if high_day < low_day else price_sell - price_sell * trend_per
-        price_risk = round(price_risk, decimal)
-        conclusion = "RISKY!" if price_risk > price_profit else "The risk is acceptable, you can buy some shares"
+
+        # Get risk
+        if high_day < low_day:
+            price_risk = round(price_sell - price_sell * trend_per, decimal)
+            conclusion = "to sell high then buy low"
+        else:
+            price_risk = round(price_buy * trend_per - price_buy, decimal)
+            conclusion = "to buy low then sell high"
+        if rice_risk < 0:
+            price_risk = abs(price_risk)
+            conclusion = "RISKY " + conclusion
+        else:
+            price_risk = 0
+            conclusion = "The risk is acceptable " + conclusion
 
         # Return stock recommendations statement
         return f"Trading recommendation for **{company}** in the next 7 days:\n" + f"  - Best buying: {currency}{price_buy}/share {buy}\n" + f"  - Best selling: {currency}{price_sell}/share {sell}\n" + f"  - Trading profit: {currency}{price_profit}/share\n" + f"  - Trading risk: {currency}{price_risk}/share\n" + f"  - Conclusion: {conclusion}\n"
